@@ -1,0 +1,66 @@
+name: release-test-ci-cd
+
+on:
+  pull_request:
+    branches:
+      - release/test
+
+  push:
+    branches:
+      - release/test
+
+jobs:
+  ci:
+    name: Build and Test on PR
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Build and test
+        run: mvn clean test package
+
+  deploy-test:
+    name: Deploy to TEST EC2
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/release/test'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Build jar
+        run: mvn clean package -DskipTests
+
+      - name: Prepare SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.TEST_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "${{ secrets.TEST_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Copy jar to EC2
+        run: |
+          scp -i ~/.ssh/id_rsa target/*.jar \
+            "${{ secrets.TEST_USER }}@${{ secrets.TEST_HOST }}:/opt/demo/app.jar"
+
+      - name: Run existing deploy.sh
+        run: |
+          ssh -i ~/.ssh/id_rsa "${{ secrets.TEST_USER }}@${{ secrets.TEST_HOST }}" \
+            "bash /opt/demo/deploy.sh"
