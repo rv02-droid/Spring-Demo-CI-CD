@@ -15,6 +15,6 @@ public class DemoApplication {
 
     @GetMapping("/")
     public String home() {
-        return "Spring Boot is Running";
+        return "Spring Boot is running";
     }
 }
