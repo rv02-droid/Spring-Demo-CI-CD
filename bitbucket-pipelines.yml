@@ -1,0 +1,28 @@
+image: maven:3.9.6-eclipse-temurin-17
+
+pipelines:
+  pull-requests:
+    '**':
+      - step:
+          name: Build and Test on PR
+          caches:
+            - maven
+          script:
+            - if [ "$BITBUCKET_PR_DESTINATION_BRANCH" != "release/test" ]; then echo "Skipping PR because destination branch is not release/test"; exit 0; fi
+            - mvn clean test package
+
+  branches:
+    release/test:
+      - step:
+          name: Deploy to TEST EC2
+          caches:
+            - maven
+          script:
+            - mvn clean package -DskipTests
+            - apt-get update && apt-get install -y openssh-client
+            - mkdir -p ~/.ssh
+            - printf '%s\n' "$TEST_SSH_KEY" > ~/.ssh/id_rsa
+            - chmod 600 ~/.ssh/id_rsa
+            - ssh-keyscan -H "$TEST_HOST" >> ~/.ssh/known_hosts
+            - scp -i ~/.ssh/id_rsa target/*.jar "$TEST_USER@$TEST_HOST:/opt/demo/app.jar"
+            - ssh -i ~/.ssh/id_rsa "$TEST_USER@$TEST_HOST" "bash /opt/demo/deploy.sh"
